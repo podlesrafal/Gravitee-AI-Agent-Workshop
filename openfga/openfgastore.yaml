@@ -1,0 +1,92 @@
+name: Hotel Booking MCP Tools
+model: |+
+  model
+    schema 1.1
+
+  type user
+
+  type role
+    relations
+      define member: [user]
+
+  type tool
+    relations
+      define can_access: [role#member]
+
+tuples:
+  # Users -> Roles
+  - user: user:john.doe@gravitee.io
+    relation: member
+    object: role:admin
+  - user: user:tom.smith@gravitee.io
+    relation: member
+    object: role:guest
+  - user: user:admin@gravitee.io
+    relation: member
+    object: role:admin
+
+  # Role -> Tool permissions
+  # Guest: read-only access (getAccommodations, getBookings)
+  - user: role:guest#member
+    relation: can_access
+    object: tool:getAccommodations
+  - user: role:guest#member
+    relation: can_access
+    object: tool:getBookings
+
+  # Admin: full access (getAccommodations, getBookings, makeBooking)
+  - user: role:admin#member
+    relation: can_access
+    object: tool:getAccommodations
+  - user: role:admin#member
+    relation: can_access
+    object: tool:getBookings
+  - user: role:admin#member
+    relation: can_access
+    object: tool:makeBooking
+
+tests:
+  - name: John Doe (admin) can access all tools including makeBooking
+    check:
+      - user: user:john.doe@gravitee.io
+        object: tool:getAccommodations
+        assertions:
+          can_access: true
+      - user: user:john.doe@gravitee.io
+        object: tool:getBookings
+        assertions:
+          can_access: true
+      - user: user:john.doe@gravitee.io
+        object: tool:makeBooking
+        assertions:
+          can_access: true
+
+  - name: Tom Smith (guest) can only view, not create bookings
+    check:
+      - user: user:tom.smith@gravitee.io
+        object: tool:getAccommodations
+        assertions:
+          can_access: true
+      - user: user:tom.smith@gravitee.io
+        object: tool:getBookings
+        assertions:
+          can_access: true
+      - user: user:tom.smith@gravitee.io
+        object: tool:makeBooking
+        assertions:
+          can_access: false
+
+  - name: Admin user can access everything
+    check:
+      - user: user:admin@gravitee.io
+        object: tool:getAccommodations
+        assertions:
+          can_access: true
+      - user: user:admin@gravitee.io
+        object: tool:getBookings
+        assertions:
+          can_access: true
+      - user: user:admin@gravitee.io
+        object: tool:makeBooking
+        assertions:
+          can_access: true

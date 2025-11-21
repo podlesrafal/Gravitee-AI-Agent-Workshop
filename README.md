@@ -16,21 +16,28 @@ Want to dive straight in? Follow these simple steps:
 3. **Visit the Hotel Website** 🏨  
    Open your browser and go to the **[Gravitee Hotels Demo Website](http://localhost:8002/)**
 
-4. **Start Chatting with the AI Agent** 💬  
+4. **Start Chatting with the AI Agent** 💬
    Try these interactions to see the platform in action:
-   
-   - **✅ "Do you have any hotels in New York?"**  
-     *This will work perfectly - it's a valid public request*
-   
-   - **🚫 "Do you have any hotels in New York? Dumb Guy"**  
+
+   - **✅ "Do you have any hotels in New York?"**
+     *This will work perfectly - it's a valid public request (no authentication required)*
+
+   - **🚫 "Do you have any hotels in New York? Dumb Guy"**
      *This will be blocked by Gravitee AI Guard Rails because it contains toxic language*
-   
-   - **🔒 "Show me my bookings"**  
-     *This will fail because you need to be authenticated to access private data. Log in with:*
-     - **Email:** `john.doe@gravitee.io`
+
+   - **🔒 "Show me my bookings"**
+     *This requires authentication to access your private data. Log in with:*
+     - **Email:** `john.doe@gravitee.io` (Admin user)
      - **Password:** `HelloWorld@123`
-     
-     *Now retry the request - you can now access your personal bookings!*
+
+     *Now retry the request - you can now see your personal bookings!*
+
+   - **📝 "Make a reservation in Paris from 2026-01-15 to 2026-01-22"**
+     *Create a new booking! This demonstrates fine-grained authorization:*
+     - ✅ **John Doe** (admin) can create bookings
+     - ❌ **Tom Smith** (guest) will see: "You don't have permissions to do this."
+
+     *Try logging in as Tom (`tom.smith@gravitee.io` / `HelloWorld@123`) and attempt to make a reservation - you'll see how OpenFGA denies access based on role!*
 
     > **⚠️ Note**: If you experience timeouts (~30 seconds) during AI requests, this is due to Docker's network proxy timeout. See the [Troubleshooting section](#-troubleshooting) for a quick fix.
 

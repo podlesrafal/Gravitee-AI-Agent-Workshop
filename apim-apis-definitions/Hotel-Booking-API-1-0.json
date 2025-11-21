@@ -85,6 +85,46 @@
                     "name": "getBookings",
                     "description": "Retrieves all existing bookings."
                   }
+                },
+                {
+                  "gatewayMapping": {
+                    "http": {
+                      "path": "/bookings",
+                      "method": "POST",
+                      "queryParams": [
+                        "hotel_name",
+                        "location",
+                        "start_date",
+                        "end_date"
+                      ]
+                    }
+                  },
+                  "toolDefinition": {
+                    "inputSchema": {
+                      "type": "object",
+                      "properties": {
+                        "hotel_name": {
+                          "description": "Name of the specific hotel to book (optional if location is provided)",
+                          "type": "string"
+                        },
+                        "location": {
+                          "description": "City/location where you want to book a hotel (optional if hotel_name is provided). System will automatically select an available hotel in this location.",
+                          "type": "string"
+                        },
+                        "start_date": {
+                          "description": "Check-in date in ISO 8601 format (e.g., 2025-08-01)",
+                          "type": "string"
+                        },
+                        "end_date": {
+                          "description": "Check-out date in ISO 8601 format (e.g., 2025-08-10)",
+                          "type": "string"
+                        }
+                      },
+                      "required": ["start_date", "end_date"]
+                    },
+                    "name": "makeBooking",
+                    "description": "Creates a new hotel booking. You can specify either a hotel name or a location (city). If only location is provided, the system will automatically select an available hotel. Room number and total price are calculated automatically."
+                  }
                 }
               ]
             }

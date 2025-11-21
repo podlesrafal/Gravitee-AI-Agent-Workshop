@@ -41,7 +41,7 @@
             "weight": 1,
             "inheritConfiguration": true,
             "configuration": {
-              "target": "http://ollama:11434"
+              "target": "http://host.docker.internal:11434"
             },
             "sharedConfigurationOverride": "{}",
             "services": {},
@@ -140,8 +140,8 @@
           "request": [
             {
               "name": "AI - Prompt Guard Rails",
-              "description": "Block Toxic Requests",
-              "enabled": true,
+              "description": "Block Toxic Requests - DISABLED due to ONNX runtime issue",
+              "enabled": false,
               "policy": "ai-prompt-guard-rails",
               "configuration": {
                 "sensitivityThreshold": 0.5,
@@ -195,8 +195,8 @@
           "request": [
             {
               "name": "AI - Prompt Guard Rails",
-              "description": "Block Toxic Requests",
-              "enabled": true,
+              "description": "Block Toxic Requests - DISABLED due to ONNX runtime issue",
+              "enabled": false,
               "policy": "ai-prompt-guard-rails",
               "configuration": {
                 "sensitivityThreshold": 0.5,
