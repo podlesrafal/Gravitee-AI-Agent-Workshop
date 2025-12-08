@@ -33,11 +33,16 @@ Want to dive straight in? Follow these simple steps:
      *Now retry the request - you can now see your personal bookings!*
 
    - **📝 "Make a reservation in Paris from 2026-01-15 to 2026-01-22"**
-     *Create a new booking! This demonstrates fine-grained authorization:*
+     *Create a new booking! Both users can create bookings (end_user role):*
+     - ✅ **Tom Smith** (end_user) can create bookings
      - ✅ **John Doe** (admin) can create bookings
-     - ❌ **Tom Smith** (guest) will see: "You don't have permissions to do this."
 
-     *Try logging in as Tom (`tom.smith@gravitee.io` / `HelloWorld@123`) and attempt to make a reservation - you'll see how OpenFGA denies access based on role!*
+   - **🗑️ "Cancel my booking at The Grand Hotel London"**
+     *This demonstrates fine-grained authorization with admin-only access:*
+     - ❌ **Tom Smith** (end_user) will see: "You don't have permissions to do this."
+     - ✅ **John Doe** (admin) can delete bookings
+
+     *Try logging in as Tom (`tom.smith@gravitee.io` / `HelloWorld@123`) and attempt to delete a booking - you'll see how OpenFGA denies access based on role!*
 
     > **⚠️ Note**: If you experience timeouts (~30 seconds) during AI requests, this is due to Docker's network proxy timeout. See the [Troubleshooting section](#-troubleshooting) for a quick fix.
 
@@ -60,6 +65,148 @@ This workshop takes you through that transformation journey, showing you how **G
 ## 🏗️ Workshop Architecture
 
 ![Workshop Architecture Diagram](./assets/architecture-diagram.png)
+
+## 🔐 Multi-Layered Authorization Architecture
+
+This workshop demonstrates a **production-ready, defense-in-depth security model** combining multiple authorization layers to protect your AI-powered APIs. Understanding how these layers work together is crucial for building secure AI applications in enterprise environments.
+
+### Security Layers Overview
+
+Your hotel booking platform implements **security layers** that work together to ensure comprehensive protection:
+
+![security-layers-diagram.png](assets/security-layers-diagram.png)
+
+### Authorization Flow Example: Create a Booking
+
+Let's trace what happens when **Tom (end_user)** tries to book a hotel:
+
+```
+1️⃣ User Request
+   Tom → "Book a hotel in Paris from Feb 1-5"
+   📤 Authorization: Bearer <tom-access-token>
+
+2️⃣ Agent Validates Token Structure
+   ✅ Token format is valid
+   ✅ Token not expired (checked locally)
+
+3️⃣ MCP Server Introspects Token with AM
+   POST /oauth/introspect
+
+   Response:
+   {
+     "active": true,
+     "scope": "openid profile bookings",
+     "preferred_username": "tom.smith@gravitee.io"
+   }
+
+   Note: User identity extracted from preferred_username (from profile scope)
+
+   ✅ Token is active
+   ✅ User identified: tom.smith@gravitee.io
+
+4️⃣ Scope Check (Coarse-Grained)
+   Required: "bookings" scope
+   Tom has: "openid profile email bookings"
+
+   ✅ Scope validation passed
+
+5️⃣ OpenFGA Authorization (Fine-Grained)
+   Query: Can user:tom.smith@gravitee.io access tool:makeBooking?
+
+   OpenFGA checks:
+   - Tom has role:end_user
+   - role:end_user has can_access to tool:makeBooking
+
+   Response: {"decision": true}
+   ✅ Fine-grained authorization passed
+
+6️⃣ Business Logic Validation
+   ✅ Hotel exists in Paris
+   ✅ Dates are valid (end > start)
+   ✅ No overlapping bookings for Tom at this hotel
+
+   🎉 Booking created successfully!
+```
+
+### User Roles & Permissions Matrix
+
+| Operation | Anonymous | Tom (end_user) | John (admin) | Security Layers Applied |
+|-----------|-----------|----------------|--------------|------------------------|
+| **Browse Hotels** | ✅ | ✅ | ✅ | None (Public) |
+| **View Bookings** | ❌ 401 | ✅ Own only | ✅ Own only | OAuth2 + Scope + OpenFGA + Data Filter |
+| **Create Booking** | ❌ 401 | ✅ With overlap check | ✅ With overlap check | OAuth2 + Scope + OpenFGA + Business Logic |
+| **Delete Booking** | ❌ 401 | ❌ 403 Forbidden | ✅ Any booking | OAuth2 + Scope + OpenFGA (admin only) |
+
+### Test Users
+
+Two pre-configured users demonstrate different authorization levels:
+
+| User | Email | Password | Role | Can Create | Can Delete |
+|------|-------|----------|------|------------|------------|
+| **Tom Smith** | tom.smith@gravitee.io | HelloWorld@123 | end_user | ✅ | ❌ |
+| **John Doe** | john.doe@gravitee.io | HelloWorld@123 | admin | ✅ | ✅ |
+
+### OpenFGA Authorization Model
+
+The workshop uses **OpenFGA** for relationship-based access control:
+
+```yaml
+# Authorization Model (openfga/openfgastore.yaml)
+
+type role
+  relations
+    define member: [user]
+
+type tool
+  relations
+    define can_access: [role#member]
+
+# Role Assignments
+user:tom.smith@gravitee.io → member → role:end_user
+user:john.doe@gravitee.io → member → role:admin
+
+# Permissions
+role:end_user → can_access → tool:getBookings
+role:end_user → can_access → tool:makeBooking
+
+role:admin → can_access → tool:getBookings
+role:admin → can_access → tool:makeBooking
+role:admin → can_access → tool:deleteBooking  ⚡ Admin only!
+```
+
+### Why Multi-Layer Security?
+
+Each layer serves a specific purpose in defense-in-depth:
+
+1. **Public Access** - Reduces friction for discovery (hotel browsing)
+2. **Token Validation** - Prevents unauthenticated requests from reaching backend
+3. **Token Introspection** - Centralized validation, real-time revocation support
+4. **OAuth2 Scopes** - Standard protocol, coarse-grained permissions
+5. **OpenFGA** - Fine-grained, role-based authorization beyond scopes
+6. **Business Logic** - Application-specific rules and data privacy
+
+**💡 Key Insight**: Combining OAuth2 scopes (coarse-grained) with OpenFGA (fine-grained) provides the flexibility enterprises need - standard protocol compliance plus custom authorization logic.
+
+### Agent Error Detection
+
+The AI agent intelligently detects authorization failures and provides user-friendly messages:
+
+```python
+# When Tom (end_user) tries to delete a booking:
+Agent detects: "forbidden" in API response
+↓
+Returns to user: "You don't have permissions to do this."
+
+# Instead of exposing technical details like:
+# "403 Forbidden: User doesn't have access to tool:deleteBooking"
+```
+
+This prevents:
+- ❌ LLM hallucinating success when authorization fails
+- ❌ Exposing internal authorization logic to end users
+- ❌ Confusing technical error messages
+
+---
 
 ## 🚀 Setting Up Your AI Transformation Lab
 
@@ -259,6 +406,97 @@ Notice the difference between public and private operations:
 > **💡 Advanced Debugging**: For developers who want to see the underlying A2A protocol messages, the inspector is still available at http://localhost:8004
 
 *🎉 **Success Milestone**: Gravitee Hotels customers can now chat naturally with AI to book hotels - your transformation is complete!*
+
+### **Part 4: User Management and Permission Assignment 🔐**
+
+*The Challenge: Your platform has automated user provisioning, but workshop participants need hands-on experience creating users and assigning permissions manually. Understanding the authorization model is key to building secure AI applications.*
+
+**Your Mission**: Create a new user in AM Console and assign OpenFGA permissions to control access to MCP tools. Experience hands-on how authorization works beyond just OAuth scopes.
+
+
+**🛠️ Technical Implementation:**
+
+#### 1. Open AM Console
+
+Navigate to [Gravitee AM Console](http://localhost:8089) and login:
+- **Username**: `admin`
+- **Password**: `adminadmin`
+
+#### 2. Create a New User
+
+1. Go to: **Settings → Users**
+2. Click: **Create User** (+ icon)
+3. Fill in the form
+4. Click: **Create**
+
+#### 3. Assign OpenFGA Role (Fine-Grained Permissions)
+
+Now grant new user fine-grained permissions using OpenFGA:
+1. Go to **Authorization**
+2. Select already created OpenFGA.
+3. Navigate to tab **Tuples** and assign new user to administrator or end_user role. You can also assign role directly to tool.
+4. Navigate to tab **Check permissions** and evaluate check to ensure that tuple is working correctly. 
+
+
+#### 4. Test Authorization
+
+1. Open the demo website: [http://localhost:8002](http://localhost:8002)
+2. Login with your user.
+3. Approve consent page.
+4. Try these commands:
+   - **"Show me hotels in Paris"** → ✅ Success (public access)
+   - **"Show me my bookings"** → ✅ Success (has `bookings` scope)
+   - **"Book a hotel in Paris from Feb 1 to Feb 5"** → ✅ Success (has `bookings` scope)
+   - **"Cancel my booking at The Grand Hotel London"** → ✅ Success (has `admin` role with OpenFGA permission)
+
+🔐 **Understanding the difference between OAuth2 scopes and OpenFGA permissions:**
+
+MCP Servers use **two complementary layers of access control** that work together to secure tool execution:
+
+**OAuth 2.1 Scopes** - What the user *allows* an application to do:
+- ✅ Granted at runtime through a **consent screen** when user logs in
+- ✅ Apply only to the **specific client application**, not the user globally
+- ✅ Represent **delegated authorization** - what the app can do on user's behalf
+- ✅ Examples: `bookings`, `accommodations`
+- ⚠️ **Do NOT define the actual user permissions** - they only define what the app can request
+
+**OpenFGA Permissions** - What the user is *actually allowed* to do:
+- ✅ Define the user's **intrinsic permissions**, independent of any application
+- ✅ Long-lived until explicitly changed by an administrator
+- ✅ Validated by the **Authorization Engine (AuthZen PDP)** on every request
+- ✅ Examples: `user:john.doe@gravitee.io` has `can_access` to `tool:deleteBooking`
+- ⚠️ Represent **true access rights** in the domain - who can do what
+
+**How They Work Together:**
+
+Both layers must succeed for a tool to execute:
+
+1. **OAuth2 Scope Check** (Coarse-grained): "Does the application have permission to request this resource category?"
+   - Agent passes: `Authorization: Bearer <access-token>`
+   - MCP Server introspects token with AM
+   - Validates: Does token contain required scope (e.g., `bookings`)?
+
+2. **OpenFGA Permission Check** (Fine-grained): "Does the user have permission to perform this specific operation?"
+   - Backend extracts user identity from token
+   - Calls AuthZen PDP: "Can user X access tool Y?"
+   - Validates: Does user have the required relationship tuple?
+
+**Real-World Example:**
+
+Tom and John both have `bookings` OAuth scope (granted via consent), but:
+- **Tom** (end_user role): Can create bookings ✅ but **cannot** delete bookings ❌
+- **John** (admin role): Can create bookings ✅ **and** can delete bookings ✅
+
+The OAuth scope (`bookings`) allows the app to access booking operations, but OpenFGA determines which specific operations each user can perform.
+
+**Why Keep Them Separate?**
+
+- **OAuth Scopes**: User controls what the *application* can do - protects against malicious apps
+- **OpenFGA Permissions**: System controls what the *user* can do - enforces business rules and policies
+
+This defense-in-depth approach ensures comprehensive security! 🛡️
+
+*🎉 **Success Milestone**: You've mastered manual user management and fine-grained authorization with OpenFGA - critical skills for securing AI applications!*
 
 ## 🏁 Wrapping Up
 

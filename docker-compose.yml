@@ -7,6 +7,8 @@ services:
     image: mongo:${MONGODB_VERSION:-7.0.25} # https://hub.docker.com/_/mongo/tags?name=7.0
     container_name: gio-apim-mongodb
     restart: always
+    ports:
+      - "27017:27017"
     volumes:
       - data-mongo:/data/db
     healthcheck:
@@ -247,6 +249,7 @@ services:
     volumes:
       - ./apim-apis-definitions:/api-definitions:ro
       - ./.openfga:/openfga:ro
+      - mcp-credentials:/mcp-credentials
     environment:
       # Access Management (AM) configuration
       - AM_BASE_URL=http://am-management-api:8093
@@ -263,6 +266,8 @@ services:
       # OpenFGA Authorization Engine bootstrap
       - OPENFGA_CONNECTION_URI=http://openfga:8080
       - OPENFGA_STORE_ID_FILE=/openfga/store_id
+      # MCP Server credentials output
+      - MCP_CREDENTIALS_FILE=/mcp-credentials/credentials
     networks:
       - southbound
 
@@ -316,8 +321,20 @@ services:
       dockerfile: Dockerfile
     container_name: hotel-booking-api
     restart: unless-stopped
+    depends_on:
+      gravitee-init:
+        condition: service_completed_successfully
     ports:
       - "8000:8000"
+    volumes:
+      - mcp-credentials:/mcp-credentials:ro
+    environment:
+      - TOKEN_INTROSPECTION_URL=http://am-gateway:8092/gravitee/oauth/introspect
+      - MCP_SERVER_CLIENT_ID=${MCP_SERVER_CLIENT_ID:-}
+      - MCP_SERVER_CLIENT_SECRET=${MCP_SERVER_CLIENT_SECRET:-}
+      - MCP_CREDENTIALS_FILE=/mcp-credentials/credentials
+      - EXPECTED_AUDIENCE=http://localhost:8082/hotels/mcp
+      - AUTHZEN_PDP_URL=http://am-gateway:8092/gravitee/access/v1/evaluation
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 5s
@@ -488,6 +505,8 @@ volumes:
   ollama_data:
     driver: local
   openfga_postgres_data:
+    driver: local
+  mcp-credentials:
     driver: local
 
 networks:

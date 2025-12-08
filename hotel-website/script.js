@@ -732,7 +732,7 @@ async function login() {
             client_id: config.clientId,
             redirect_uri: config.redirectUri,
             response_type: 'code',
-            scope: 'openid profile email accommodations bookings',
+            scope: 'openid profile bookings',
             code_challenge: codeChallenge,
             code_challenge_method: 'S256',
             state: sessionStorage.getItem('auth_state')

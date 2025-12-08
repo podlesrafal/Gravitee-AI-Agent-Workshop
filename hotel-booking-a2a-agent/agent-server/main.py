@@ -91,36 +91,44 @@ class HotelBookingAgent:
                 tool_name = tool_call.get("function", {}).get("name")
                 tool_args = tool_call.get("function", {}).get("arguments")
 
-                # Validate the user's OAuth token before calling MCP tools
-                if not authorization_header:
-                    logger.error(f"Tool {tool_name} requires authentication but no Authorization header was provided")
-                    return (
-                        "You need to be signed in to complete this action. "
-                        "Please sign in and try again."
-                    )
+                # Define which tools are public (don't require authentication)
+                PUBLIC_TOOLS = ["getAccommodations"]
+                tool_requires_auth = tool_name not in PUBLIC_TOOLS
 
-                if validated_access_token is None:
-                    try:
-                        validated_access_token = await self.auth_service.process_authorization_for_tool(authorization_header)
-                        logger.info("Validated user authorization token for tool call")
-                    except AuthenticationError as auth_error:
-                        logger.warning(f"Authorization failure while processing tool {tool_name}: {auth_error}")
+                # Validate the user's OAuth token before calling MCP tools (only for protected tools)
+                if tool_requires_auth:
+                    if not authorization_header:
+                        logger.error(f"Tool {tool_name} requires authentication but no Authorization header was provided")
                         return (
-                            "I couldn't verify your sign-in status. "
-                            "Please sign in again and then retry your request."
+                            "You need to be signed in to complete this action. "
+                            "Please sign in and try again."
                         )
-                
+
+                    if validated_access_token is None:
+                        try:
+                            validated_access_token = await self.auth_service.process_authorization_for_tool(authorization_header)
+                            logger.info("Validated user authorization token for tool call")
+                        except AuthenticationError as auth_error:
+                            logger.warning(f"Authorization failure while processing tool {tool_name}: {auth_error}")
+                            return (
+                                "I couldn't verify your sign-in status. "
+                                "Please sign in again and then retry your request."
+                            )
+                else:
+                    logger.info(f"Tool {tool_name} is public, skipping authentication")
+
                 logger.info(f"Executing tool: {tool_name}")
 
-                extra_headers = {
-                    "Authorization": f"Bearer {validated_access_token}"
-                }
-                
-                # Try calling the tool first
+                # Only add Authorization header for protected tools
+                extra_headers = {}
+                if tool_requires_auth and validated_access_token:
+                    extra_headers["Authorization"] = f"Bearer {validated_access_token}"
+
+                # Call the tool
                 tool_result, response_headers = await self.mcp_client.call_tool(
                     tool_name,
                     tool_args,
-                    extra_headers=extra_headers
+                    extra_headers=extra_headers if extra_headers else None
                 )
 
                 # Check if the tool result contains an authorization/permission error
@@ -157,13 +165,20 @@ class HotelBookingAgent:
                 return final_response
 
             # Return initial response if no tools were called
-            logger.warning("No tools were called by LLM")
+            logger.info("LLM provided direct response without tool calls")
             logger.info("=" * 80)
-            return (
-                "I couldn't determine a clear action from your message. "
-                "Please rephrase or provide more details (for example: search for hotels in New York) "
-                "and I'll help you."
-            )
+            # If LLM returned content without tools, it's likely a clarifying question or greeting
+            if initial_content and initial_content.strip():
+                return initial_content
+            else:
+                return (
+                    "I'm here to help you with hotel bookings! I can:\n"
+                    "• Search for hotels in any city\n"
+                    "• Show your existing bookings\n"
+                    "• Make new reservations\n"
+                    "• Cancel bookings\n\n"
+                    "What would you like to do?"
+                )
             
         except Exception as e:
             logger.error(f"Error processing request: {e}", exc_info=True)
